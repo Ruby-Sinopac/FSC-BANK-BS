@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+
+# 診斷與暫存輸出（探查工具 dump 出來的原始 HTML 等）
+debug/
+*.log
+
+# 抓回來的資料檔可視需要保留或忽略；預設保留 data/ 內的成果
+data/*.tmp

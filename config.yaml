@@ -1,0 +1,68 @@
+# =============================================================================
+# 金管會銀行局「資產負債簡表(102年以後)」自動抓取設定檔
+# =============================================================================
+# 第一次使用流程：
+#   1. 先跑探查工具找出 funid：
+#        python -m fsc_scraper discover-menu
+#      它會列出網站導覽中所有「資產負債簡表」相關節點與其 funid，
+#      把屬於「(102年以後)」那一張表的 funid 填到下面 query.funid。
+#   2. 用該 funid dump 查詢條件頁，確認欄位與可選期間：
+#        python -m fsc_scraper inspect --funid iXXXXX
+#      它會印出表單欄位、可選的統計期(民國年月)，以及一條可直接用的
+#      stmain.jsp 範例網址。把網址對照後，視需要調整下面 query.result_url_template。
+#   3. 執行更新：
+#        python -m fsc_scraper update
+# =============================================================================
+
+site:
+  # 網站根網址（結尾不要加斜線）
+  base_url: "https://survey.banking.gov.tw/statis"
+  # 該系統頁面實際編碼；多半是 utf-8，舊頁面可能是 big5。
+  # 留 auto 會自動偵測；偵測不準時可手動改成 utf-8 或 big5。
+  encoding: "auto"
+
+query:
+  # ---- 必填：要抓的那張表 ----
+  # 「資產負債簡表(102年以後)」的 funid，請用 discover-menu 找出後填入。
+  funid: ""            # 例如 "i10010"
+
+  # ---- 取得資料的網址樣板 ----
+  # 這個 statis 系統的資料是由 stmain.jsp 用網址參數產生的。
+  # 以下為已知的參數結構，{ } 內為程式會自動代入的值：
+  #   {ym}     起始民國年月（含），如 10201 表示民國102年1月
+  #   {ymt}    結束民國年月（含）
+  #   {funid}  上面填的 funid
+  #   {outmode}輸出格式（見下方 outmode）
+  #   {rdm}    亂數字串（程式自動產生，避免快取）
+  # inspect 步驟若發現參數不同（kind/type/cycle/sys），請依實際情況修改此樣板。
+  result_url_template: "{base_url}/stmain.jsp?sys=220&ym={ym}&ymt={ymt}&kind=21&type=1&funid={funid}&cycle=41&outmode={outmode}&compmode=00&outkind=1&rdm={rdm}"
+
+  # 輸出格式：0 = HTML 網頁(最穩定，程式會自己解析表格)；其他值依系統而定可能是 CSV/Excel。
+  # 不確定就用 0。
+  outmode: 0
+
+  # 抓取起始期：
+  #   "auto"  -> 增量更新，從歷史資料最後一期的下一期開始抓（建議）。
+  #   "10201" -> 指定民國年月強制重抓。
+  start_period: "auto"
+
+  # 抓取結束期：
+  #   "latest" -> 自動偵測網站上最新可用的一期。
+  #   "11412"  -> 指定民國年月。
+  end_period: "latest"
+
+storage:
+  # 歷史/輸出資料檔。支援 .xlsx 與 .csv。
+  data_file: "data/asset_liability_summary.xlsx"
+  # Excel 工作表名稱（僅 .xlsx 時有效）
+  sheet_name: "資產負債簡表"
+  # 用來判斷「最後一期」與去重的欄位名稱（抓回來解析後的期間欄）。
+  # 第一次跑完看實際欄名後再回來確認。
+  period_column: "期間"
+
+http:
+  timeout: 60
+  retries: 4
+  # 禮貌性間隔（秒），避免對政府網站發太快。
+  delay_between_requests: 1.5
+  user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
