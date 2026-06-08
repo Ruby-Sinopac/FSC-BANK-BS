@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import logging
 import random
+import re
 import string
 from dataclasses import dataclass
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
@@ -85,29 +86,57 @@ def build_result_url(cfg: Config, start: int, end: int) -> str:
     )
 
 
-def parse_result(text: str, content_type: str = "") -> pd.DataFrame:
-    """把 stmain.jsp 的回應解析成 DataFrame。
+_PERIOD_PAT = re.compile(r"\d{2,3}\s*年|\d{3,4}/\d{1,2}|\d{5,6}")
+_NUMERIC_PAT = re.compile(r"\d{1,3}(,\d{3})+|\d+\.\d+")
+_BOILERPLATE = ("產生時間", "點選結果表", "單位：", "單位:", "回上頁", "列印", "查詢條件")
 
-    outmode=0 時是 HTML 表格；其他輸出模式可能是 CSV。兩者都嘗試處理。
+
+def _table_score(df: pd.DataFrame) -> float:
+    """替一個候選表格評分：含『年月』期別、數字越多越像資料表；樣板字越多越扣分。"""
+    text = " ".join(str(v) for v in df.to_numpy().ravel()[:2000])
+    score = 0.0
+    score += 30 * len(_PERIOD_PAT.findall(text))
+    score += len(_NUMERIC_PAT.findall(text))
+    score += 0.1 * df.size
+    for bad in _BOILERPLATE:
+        score -= 20 * text.count(bad)
+    return score
+
+
+def _leaf_tables_html(text: str) -> list[str]:
+    """回傳所有「最內層」(不再包含子表格) 的 <table> HTML 字串。"""
+    soup = BeautifulSoup(text, "lxml")
+    leaves = [t for t in soup.find_all("table") if not t.find("table")]
+    return [str(t) for t in leaves]
+
+
+def parse_result(text: str, content_type: str = "") -> pd.DataFrame:
+    """把結果頁解析成 DataFrame。
+
+    這個 statis 系統是「表格包表格」，真正的資料在最內層表格，且外層常是
+    產生時間/單位/點選提示等樣板。因此優先在「最內層表格」中挑分數最高者。
+    outmode 若為 CSV 也一併處理。
     """
     stripped = text.lstrip()
     looks_like_html = stripped.startswith("<") or "<table" in text.lower() or "html" in content_type.lower()
 
     if looks_like_html:
-        # 取頁面中資料量最大的表格（通常就是統計表本身）
-        try:
-            tables = pd.read_html(io.StringIO(text))
-        except ValueError:
-            tables = []
-        if not tables:
-            # 退而求其次，手動找最大的 <table>
-            soup = BeautifulSoup(text, "lxml")
-            tbls = soup.find_all("table")
-            if not tbls:
-                raise RuntimeError("回應中找不到任何表格，請用 --debug 保存 HTML 後檢視。")
-            biggest = max(tbls, key=lambda t: len(t.find_all("tr")))
-            tables = pd.read_html(io.StringIO(str(biggest)))
-        df = max(tables, key=lambda d: d.size)
+        candidates: list[pd.DataFrame] = []
+        # 1) 先試最內層表格（最可能是純資料）
+        for html in _leaf_tables_html(text):
+            try:
+                candidates.extend(pd.read_html(io.StringIO(html)))
+            except ValueError:
+                continue
+        # 2) 退而求其次：整頁所有表格
+        if not candidates:
+            try:
+                candidates = pd.read_html(io.StringIO(text))
+            except ValueError:
+                candidates = []
+        if not candidates:
+            raise RuntimeError("回應中找不到任何資料表格，請用 --debug 保存 HTML 後用 analyze 檢視。")
+        df = max(candidates, key=_table_score)
         return _clean_table(df)
 
     # 視為 CSV

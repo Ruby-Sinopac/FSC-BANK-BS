@@ -144,6 +144,48 @@ def cmd_update(cfg, args) -> int:
     return 0
 
 
+def cmd_analyze(cfg, args) -> int:
+    """分析一個已存的結果 HTML 檔，列出所有表格的形狀與預覽，協助定位資料表。"""
+    import io as _io
+
+    import pandas as pd
+
+    from .scraper import _leaf_tables_html, _table_score, _clean_table
+
+    with open(args.htmlfile, "r", encoding="utf-8", errors="replace") as f:
+        text = f.read()
+    print(f"檔案：{args.htmlfile}（{len(text)} 字元）\n")
+
+    leaves = _leaf_tables_html(text)
+    print(f"最內層(leaf)表格數：{len(leaves)}")
+    all_tables: list[tuple[str, "pd.DataFrame"]] = []
+    for i, html in enumerate(leaves):
+        try:
+            for df in pd.read_html(_io.StringIO(html)):
+                all_tables.append((f"leaf#{i}", df))
+        except ValueError:
+            continue
+
+    if not all_tables:
+        print("(leaf 解析不到表格，改列整頁所有表格)")
+        try:
+            for j, df in enumerate(pd.read_html(_io.StringIO(text))):
+                all_tables.append((f"all#{j}", df))
+        except ValueError:
+            pass
+
+    ranked = sorted(all_tables, key=lambda t: _table_score(t[1]), reverse=True)
+    print(f"共解析出 {len(all_tables)} 個表格，依『像資料表』分數排序，前 5 個：\n")
+    for tag, df in ranked[:5]:
+        print(f"── {tag}  shape={df.shape}  score={_table_score(df):.0f}")
+        cleaned = _clean_table(df.copy())
+        print("   欄位:", list(cleaned.columns)[:20])
+        print(cleaned.head(4).to_string()[:1500])
+        print()
+    print("請把分數最高、看起來像『統計期 + 各銀行各項目數字』的那個表格內容貼給我。")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="fsc_scraper", description="資產負債簡表(102年以後) 自動抓取")
     parser.add_argument("-c", "--config", default=None, help="設定檔路徑（預設 config.yaml）")
@@ -164,6 +206,9 @@ def main(argv: list[str] | None = None) -> int:
     p_upd.add_argument("--start", default=None, help="覆寫起始民國年月（測試用，如 11502）")
     p_upd.add_argument("--end", default=None, help="覆寫結束民國年月（測試用，如 11503）")
 
+    p_ana = sub.add_parser("analyze", help="分析已存的結果 HTML，定位資料表")
+    p_ana.add_argument("htmlfile", help="debug/ 下的 HTML 檔路徑")
+
     args = parser.parse_args(argv)
     logging.basicConfig(
         level=logging.INFO if args.verbose else logging.WARNING,
@@ -175,6 +220,7 @@ def main(argv: list[str] | None = None) -> int:
         "discover-menu": cmd_discover_menu,
         "inspect": cmd_inspect,
         "update": cmd_update,
+        "analyze": cmd_analyze,
     }
     return handlers[args.command](cfg, args)
 
