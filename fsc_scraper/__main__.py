@@ -40,7 +40,7 @@ def _make_client(cfg) -> StatisClient:
 def cmd_discover_menu(cfg, args) -> int:
     client = _make_client(cfg)
     print(f"正在抓取網站導覽 ({cfg.base_url}) …")
-    nodes = discover_menu(client, cfg.base_url, keyword=args.keyword)
+    nodes = discover_menu(client, cfg.base_url, keyword=args.keyword, debug=args.debug)
     print_menu(nodes, keyword=args.keyword)
     return 0
 
@@ -130,6 +130,7 @@ def main(argv: list[str] | None = None) -> int:
 
     p_menu = sub.add_parser("discover-menu", help="列出選單節點與 funid")
     p_menu.add_argument("--keyword", default="資產負債簡表", help="要尋找的節點關鍵字")
+    p_menu.add_argument("--debug", action="store_true", help="把每頁原始 HTML 存到 debug/")
 
     p_insp = sub.add_parser("inspect", help="dump 查詢條件頁")
     p_insp.add_argument("--funid", default=None)
