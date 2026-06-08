@@ -191,6 +191,39 @@ def cmd_analyze(cfg, args) -> int:
     return 0
 
 
+def cmd_inspect_excel(cfg, args) -> int:
+    """讀本機 Excel，把結構（分頁、前幾列內容、合併儲存格）印成文字，方便對齊。"""
+    import openpyxl
+
+    wb = openpyxl.load_workbook(args.file, data_only=True)
+    print(f"檔案：{args.file}")
+    print(f"分頁數：{len(wb.sheetnames)}")
+    print("分頁名稱：", wb.sheetnames)
+
+    targets = [args.sheet] if args.sheet else wb.sheetnames[:2]
+    for sh in targets:
+        if sh not in wb.sheetnames:
+            print(f"\n(找不到分頁「{sh}」)")
+            continue
+        ws = wb[sh]
+        print(f"\n===== 分頁「{sh}」 維度={ws.dimensions} 前 {args.rows} 列 / 前 {args.cols} 欄 =====")
+        merged = [str(r) for r in ws.merged_cells.ranges][:15]
+        if merged:
+            print("合併儲存格（前15）：", merged)
+        for r in range(1, args.rows + 1):
+            vals = []
+            for c in range(1, args.cols + 1):
+                v = ws.cell(row=r, column=c).value
+                vals.append("" if v is None else str(v))
+            # 去掉尾端空欄，縮短輸出
+            while vals and vals[-1] == "":
+                vals.pop()
+            print(f"R{r}:", " | ".join(vals))
+        # 嘗試找「統計期」欄與最後一筆資料
+        print("（請把以上內容貼給我；我會據此辨識表頭列、統計期欄、各項目欄與資料起始列。）")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="fsc_scraper", description="資產負債簡表(102年以後) 自動抓取")
     parser.add_argument("-c", "--config", default=None, help="設定檔路徑（預設 config.yaml）")
@@ -214,6 +247,12 @@ def main(argv: list[str] | None = None) -> int:
     p_ana = sub.add_parser("analyze", help="分析已存的結果 HTML，定位資料表")
     p_ana.add_argument("htmlfile", help="debug/ 下的 HTML 檔路徑")
 
+    p_xls = sub.add_parser("inspect-excel", help="檢視本機 Excel 結構（分頁/表頭/前幾列）")
+    p_xls.add_argument("file", help="你的歷史 Excel 路徑")
+    p_xls.add_argument("--sheet", default=None, help="只看指定分頁（預設看前兩個）")
+    p_xls.add_argument("--rows", type=int, default=8, help="顯示前幾列（預設8）")
+    p_xls.add_argument("--cols", type=int, default=30, help="顯示前幾欄（預設30）")
+
     args = parser.parse_args(argv)
     logging.basicConfig(
         level=logging.INFO if args.verbose else logging.WARNING,
@@ -226,6 +265,7 @@ def main(argv: list[str] | None = None) -> int:
         "inspect": cmd_inspect,
         "update": cmd_update,
         "analyze": cmd_analyze,
+        "inspect-excel": cmd_inspect_excel,
     }
     return handlers[args.command](cfg, args)
 
