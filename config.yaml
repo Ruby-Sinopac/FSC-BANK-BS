@@ -77,13 +77,20 @@ storage:
     - "項目"
 
 export:
-  # 另外匯出成「每家銀行一個工作表、列=統計期、欄=各項目」的 Excel，貼近你的歷史檔格式。
-  enabled: true
+  # 另外匯出成「每家銀行一個工作表、列=統計期、欄=各項目」的全新 Excel。
+  # 若你只想更新自己原本的檔（excel_target），可把這裡關掉。
+  enabled: false
   file: "data/資產負債簡表_各銀行.xlsx"
-  # 工作表名稱是否去掉銀行代碼與「商業銀行」等字（如 808 玉山商業銀行 -> 玉山）。
   short_sheet_names: true
-  # 是否包含「本國銀行」(全行合計) 這一欄/分頁。
   include_total: false
+
+# ===== 直接更新進你原本的 Excel（保留格式/分頁/表頭）=====
+excel_target:
+  enabled: true
+  # 你的歷史檔路徑（與本程式同資料夾時直接寫檔名即可）。
+  file: "同業近況報告：各銀行資產負債簡表分析.xlsx"
+  # 寫入前是否自動備份一份（加時間戳）。強烈建議保持 true。
+  backup: true
 
 http:
   timeout: 60

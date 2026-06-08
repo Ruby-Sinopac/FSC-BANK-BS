@@ -97,24 +97,30 @@ def cmd_update(cfg, args) -> int:
     else:
         end = parse_period(cfg.end_period)
 
-    # 2) 起始期 — CLI --start 優先
+    # 2) 起始期 — CLI --start 優先；否則以「目標 Excel / 主檔」最後一期推算
     existing = storage.load_existing(cfg.data_file, cfg.sheet_name)
     if args.start:
         start = parse_period(args.start)
     elif cfg.start_period == "auto":
-        last = storage.latest_period_in(existing, cfg.period_column)
+        last = None
+        if cfg.excel_target_enabled and os.path.exists(cfg.excel_target_file):
+            from .excel_update import latest_period_in_workbook
+            last = latest_period_in_workbook(cfg.excel_target_file)
+            if last is not None:
+                print(f"你的 Excel 最後一期：{format_roc(last)}")
         if last is None:
-            # 沒有歷史資料 -> 預設從民國102年1月開始（102年以後表的起點）
+            last = storage.latest_period_in(existing, cfg.period_column)
+        if last is None:
             start = 10201
-            print("找不到歷史資料，將從 102年01月 開始全量抓取。")
+            print("找不到既有資料，將從 102年01月 開始全量抓取。")
         else:
             start = next_month(last)
-            print(f"歷史資料最後一期：{format_roc(last)}，將從 {format_roc(start)} 開始增量抓取。")
+            print(f"將從 {format_roc(start)} 開始增量抓取至 {format_roc(end)}。")
     else:
         start = parse_period(cfg.start_period)
 
     if start > end:
-        print(f"已是最新（歷史最後一期之後沒有新資料）。最新期 = {format_roc(end)}，無需更新。")
+        print(f"已是最新（最後一期之後沒有新資料）。最新期 = {format_roc(end)}，無需更新。")
         return 0
 
     # 3) 抓取（長格式：統計期 / 期碼 / 銀行 / 項目 / 數值）
@@ -127,26 +133,51 @@ def cmd_update(cfg, args) -> int:
         print(f"  項目 ({df['項目'].nunique()})：", list(dict.fromkeys(df['項目']))[:30])
     else:
         print("⚠ 沒有解析到任何資料，請用 --debug 後以 analyze 檢視 HTML。")
+        return 1
 
-    if args.dry_run:
-        print("\n[dry-run] 僅預覽，不寫入檔案。前 15 筆：")
-        print(df.head(15).to_string())
-        return 0
-
-    # 4) 合併寫回長格式主檔
+    # 4) 更新長格式主檔（工具自己的備份來源）
     merged = storage.merge(existing, df, cfg.period_column, cfg.key_columns)
-    storage.save(merged, cfg.data_file, cfg.sheet_name)
-    print(f"\n已更新主檔 {cfg.data_file}（合併後共 {merged.shape[0]} 筆）。")
+    if not args.dry_run:
+        storage.save(merged, cfg.data_file, cfg.sheet_name)
+        print(f"已更新主檔 {cfg.data_file}（共 {merged.shape[0]} 筆）。")
 
-    # 5) 匯出各銀行分頁 Excel
-    if cfg.export_enabled:
+    # 5) 直接更新進你原本的 Excel（option 2）
+    if cfg.excel_target_enabled:
+        from .excel_update import append_to_workbook
+        if not os.path.exists(cfg.excel_target_file):
+            print(f"⚠ 找不到目標 Excel：{cfg.excel_target_file}")
+            return 2
+        mode = "[dry-run 預覽] " if args.dry_run else ""
+        print(f"\n{mode}更新你的 Excel：{cfg.excel_target_file}")
+        reports = append_to_workbook(
+            merged, cfg.excel_target_file, dry_run=args.dry_run, backup=cfg.excel_target_backup
+        )
+        _print_excel_reports(reports)
+
+    # 6) （可選）另外匯出全新的各銀行分頁 Excel
+    if cfg.export_enabled and not args.dry_run:
         from . import export
         n = export.export_per_bank(
             merged, cfg.export_file,
             short_names=cfg.short_sheet_names, include_total=cfg.include_total,
         )
-        print(f"已匯出各銀行分頁：{cfg.export_file}（{n} 個分頁）。")
+        print(f"已另存各銀行分頁：{cfg.export_file}（{n} 個分頁）。")
     return 0
+
+
+def _print_excel_reports(reports) -> None:
+    print(f"{'分頁':<8}{'對應銀行':<18}{'最後一期':<10}{'新增期數':<8}{'項目對到':<8} 備註")
+    for r in reports:
+        last = format_roc(r.last_period) if r.last_period else "-"
+        new = f"{len(r.new_periods)}" if r.bank else "-"
+        items = f"{r.matched_items}" if r.bank else "-"
+        bank = (r.bank or "")[:16]
+        print(f"{r.sheet:<8}{bank:<18}{last:<10}{new:<8}{items:<8} {r.note}")
+        if r.new_periods:
+            from .periods import format_roc as _f
+            print(f"        └ 新增：{[_f(c) for c in r.new_periods]}")
+        if r.unmatched_items:
+            print(f"        └ ⚠ 對不到的項目欄：{r.unmatched_items}")
 
 
 def cmd_analyze(cfg, args) -> int:

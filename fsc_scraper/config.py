@@ -110,6 +110,23 @@ class Config:
     def include_total(self) -> bool:
         return bool(self.export.get("include_total", False))
 
+    # --- 直接更新進既有 Excel ---
+    @property
+    def excel_target(self) -> dict[str, Any]:
+        return self.raw.get("excel_target", {})
+
+    @property
+    def excel_target_enabled(self) -> bool:
+        return bool(self.excel_target.get("enabled", False))
+
+    @property
+    def excel_target_file(self) -> str:
+        return self.excel_target.get("file", "")
+
+    @property
+    def excel_target_backup(self) -> bool:
+        return bool(self.excel_target.get("backup", True))
+
     @property
     def http(self) -> dict[str, Any]:
         return self.raw.get("http", {})
