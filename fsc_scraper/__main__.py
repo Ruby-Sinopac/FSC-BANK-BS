@@ -71,18 +71,21 @@ def cmd_inspect(cfg, args) -> int:
 
 
 def cmd_update(cfg, args) -> int:
-    if not cfg.download_url and not cfg.funid:
+    urls = cfg.download_urls
+    if not urls and not cfg.funid:
         print(
-            "config.yaml 尚未設定 query.download_url（建議）或 query.funid。\n"
-            "請在瀏覽器查到該表後，把結果頁網址貼到 download_url。",
+            "config.yaml 尚未設定 query.download_urls（建議）或 query.funid。\n"
+            "請在瀏覽器查到該表後，把結果頁網址貼到 download_urls。",
             file=sys.stderr,
         )
         return 2
+    if urls:
+        print(f"共 {len(urls)} 條下載網址。")
     client = _make_client(cfg)
 
     # 1) 結束期（上界）
     if cfg.end_period == "latest":
-        if cfg.download_url:
+        if urls:
             # 用真實下載網址時，以系統當月為上界，實際最新期由回傳資料決定。
             end = current_roc_period()
             print(f"以當月 {format_roc(end)} 為查詢上界（實際最新期以網站回傳為準）。")
@@ -112,21 +115,26 @@ def cmd_update(cfg, args) -> int:
     # 3) 抓取
     result = fetch(client, cfg, start, end, debug=args.debug)
     print(f"\n抓回表格：{result.df.shape[0]} 列 x {result.df.shape[1]} 欄")
-    print("欄位：", list(result.df.columns)[:12], "..." if result.df.shape[1] > 12 else "")
+    print("欄位：", list(result.df.columns))
 
     if args.dry_run:
-        print("\n[dry-run] 僅預覽，不寫入檔案。前 5 列：")
-        print(result.df.head().to_string())
+        print("\n[dry-run] 僅預覽，不寫入檔案。前 10 列：")
+        print(result.df.head(10).to_string())
+        print(
+            "\n請對照你的歷史資料，確認：(1)『期別』欄名 (2)『銀行』欄名，"
+            "並填到 config.yaml 的 storage.period_column 與 storage.key_columns。"
+        )
         return 0
 
     # 4) 合併寫回
-    merged = storage.merge(existing, result.df, cfg.period_column)
+    merged = storage.merge(existing, result.df, cfg.period_column, cfg.key_columns)
     storage.save(merged, cfg.data_file, cfg.sheet_name)
     print(f"\n已更新並寫入 {cfg.data_file}（合併後共 {merged.shape[0]} 列）。")
-    if cfg.period_column not in result.df.columns:
+    missing = [k for k in cfg.key_columns if k not in result.df.columns]
+    if missing:
         print(
-            f"⚠ 注意：抓回的表格沒有名為「{cfg.period_column}」的欄位，"
-            "增量去重可能未生效。請看上面實際欄位，並修改 config.yaml 的 storage.period_column。"
+            f"⚠ 注意：抓回的表格沒有這些去重鍵欄位 {missing}，增量去重可能未生效。"
+            "請看上面實際欄位，調整 config.yaml 的 period_column / key_columns。"
         )
     return 0
 

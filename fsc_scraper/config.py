@@ -36,6 +36,21 @@ class Config:
         return (self.raw["query"].get("download_url") or "").strip()
 
     @property
+    def download_urls(self) -> list[str]:
+        """一或多條完整下載網址（含 ym/ymt）。多條會分別抓取再合併。
+
+        相容單條 download_url：若只填了 download_url 也會被納入。
+        """
+        urls = self.raw["query"].get("download_urls") or []
+        if isinstance(urls, str):
+            urls = [urls]
+        urls = [u.strip() for u in urls if u and u.strip()]
+        single = self.download_url
+        if single and single not in urls:
+            urls.insert(0, single)
+        return urls
+
+    @property
     def result_url_template(self) -> str:
         return self.raw["query"].get("result_url_template", "")
 
@@ -62,6 +77,17 @@ class Config:
     @property
     def period_column(self) -> str:
         return self.raw["storage"].get("period_column", "期間")
+
+    @property
+    def key_columns(self) -> list[str]:
+        """合併去重用的鍵欄位。多家銀行時通常是 [期別, 銀行]。
+
+        未設定時退回 [period_column]。
+        """
+        keys = self.raw["storage"].get("key_columns")
+        if keys:
+            return [str(k) for k in keys]
+        return [self.period_column]
 
     @property
     def http(self) -> dict[str, Any]:

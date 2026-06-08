@@ -23,16 +23,20 @@ site:
   encoding: "auto"
 
 query:
-  # ===== 推薦：直接貼入完整下載網址 =====
+  # ===== 推薦：直接貼入完整下載網址（可多條）=====
   # 在瀏覽器查到「資產負債簡表(102年以後)」結果後，把整條網址貼到這裡（含 ym=、ymt=）。
-  # 設了這個，程式會沿用網址內所有參數，只自動替換 ym/ymt（與防快取 rdm）。
-  # 例：
-  # download_url: "https://survey.banking.gov.tw/statis/webMain.aspx?sys=220&kind=21&type=1&funid=iXXXXX&cycle=41&ym=11403&ymt=11503&outmode=8&compmode=00&outkind=1&fldspc=..."
+  # 程式會沿用網址內所有參數（含複分類選的銀行 codspc0），只自動替換 ym/ymt 與 rdm。
+  # 銀行較多、需分批查詢時，可貼多條，程式會分別抓取再合併。
+  # 目前這兩條 = 共 14 家本國銀行的資產負債簡表(102年以後)，funid=i20010。
+  download_urls:
+    - "https://survey.banking.gov.tw/statis/webMain.aspx?sys=220&ym=11502&ymt=11503&kind=21&type=1&funid=i20010&cycle=1&outmode=0&compmode=00&outkind=1&fldspc=0,22,&codspc0=0,1,7,3,12,2,16,1,22,1,26,1,32,3,&rdm=R9346208"
+    - "https://survey.banking.gov.tw/statis/webMain.aspx?sys=220&ym=11502&ymt=11503&kind=21&type=1&funid=i20010&cycle=1&outmode=0&compmode=00&outkind=1&fldspc=0,22,&codspc0=0,1,35,1,37,1,39,1,&rdm=R2622376"
+
+  # 單條版（相容用；若用上面的 download_urls 可留空）
   download_url: ""
 
   # ===== 備援：若不貼完整網址，才會用下面的 funid + 參數樣板（較易猜錯）=====
-  # 「資產負債簡表(102年以後)」的 funid，可用 discover-menu 嘗試找出。
-  funid: ""            # 例如 "i10010"
+  funid: ""            # 例如 "i20010"
 
   # ---- 取得資料的網址樣板（僅在 download_url 留空時使用）----
   # 這個 statis 系統的資料是由 stmain.jsp 用網址參數產生的。
@@ -64,9 +68,14 @@ storage:
   data_file: "data/asset_liability_summary.xlsx"
   # Excel 工作表名稱（僅 .xlsx 時有效）
   sheet_name: "資產負債簡表"
-  # 用來判斷「最後一期」與去重的欄位名稱（抓回來解析後的期間欄）。
-  # 第一次跑完看實際欄名後再回來確認。
-  period_column: "期間"
+  # 用來判斷「最後一期」的期別欄名（抓回來解析後的期間欄）。
+  # 第一次跑 `update --dry-run` 看實際欄名後再回來確認。
+  period_column: "期別"
+  # 合併去重的鍵欄位。因為有多家銀行，通常要「期別 + 銀行」兩欄一起當鍵，
+  # 否則同一期不同銀行會被誤刪。請依 dry-run 看到的實際欄名調整。
+  key_columns:
+    - "期別"
+    - "銀行"
 
 http:
   timeout: 60

@@ -30,19 +30,28 @@ def latest_period_in(df: pd.DataFrame | None, period_column: str) -> int | None:
     return max(periods) if periods else None
 
 
-def merge(existing: pd.DataFrame | None, new: pd.DataFrame, period_column: str) -> pd.DataFrame:
-    """合併新舊資料；以 period_column 去重（新資料優先），並依期間排序。"""
+def merge(
+    existing: pd.DataFrame | None,
+    new: pd.DataFrame,
+    period_column: str,
+    key_columns: list[str] | None = None,
+) -> pd.DataFrame:
+    """合併新舊資料；以 key_columns 去重（新資料優先），並依期間排序。
+
+    key_columns 用來唯一辨識一列，多家銀行時通常是 [期別, 銀行]；
+    未提供則退回 [period_column]。只會用實際存在於資料中的鍵欄位。
+    """
     if existing is None or existing.empty:
         combined = new.copy()
     else:
         combined = pd.concat([existing, new], ignore_index=True)
 
-    if period_column in combined.columns:
+    keys = [k for k in (key_columns or [period_column]) if k in combined.columns]
+    if keys:
         # 後出現者（new）優先 -> keep="last"
-        combined = combined.drop_duplicates(subset=[period_column], keep="last")
-        combined["_sort"] = combined[period_column].map(
-            lambda v: _safe_parse(v)
-        )
+        combined = combined.drop_duplicates(subset=keys, keep="last")
+    if period_column in combined.columns:
+        combined["_sort"] = combined[period_column].map(_safe_parse)
         combined = combined.sort_values("_sort").drop(columns="_sort").reset_index(drop=True)
     return combined
 

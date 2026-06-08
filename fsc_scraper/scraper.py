@@ -64,7 +64,9 @@ def build_url_from_sample(sample_url: str, start: int, end: int) -> str:
     params["ymt"] = str(end)
     if "rdm" in params:
         params["rdm"] = _rdm()
-    new_query = urlencode(params)
+    # 保留逗號為字面值（fldspc/codspc0 用逗號分隔，原始網址即為字面逗號），
+    # 避免被編成 %2C 後讓挑剔的舊系統解析失敗。
+    new_query = urlencode(params, safe=",")
     return urlunparse(parts._replace(query=new_query))
 
 
@@ -125,15 +127,34 @@ def _clean_table(df: pd.DataFrame) -> pd.DataFrame:
     return df.reset_index(drop=True)
 
 
-def fetch(client: StatisClient, cfg: Config, start: int, end: int, *, debug: bool = False) -> FetchResult:
-    url = build_result_url(cfg, start, end)
+def _fetch_one(client: StatisClient, url: str, start: int, end: int, *, tag: str = "", debug: bool = False) -> pd.DataFrame:
     log.info("抓取 %s ~ %s：%s", format_roc(start), format_roc(end), url)
     resp = client.get(url)
     text = client._decode(resp)  # noqa: SLF001 - 內部解碼
     if debug:
         import os
         os.makedirs("debug", exist_ok=True)
-        with open(f"debug/result_{start}_{end}.html", "w", encoding="utf-8") as f:
+        fname = f"debug/result_{start}_{end}{('_' + tag) if tag else ''}.html"
+        with open(fname, "w", encoding="utf-8") as f:
             f.write(text)
-    df = parse_result(text, resp.headers.get("Content-Type", ""))
+    return parse_result(text, resp.headers.get("Content-Type", ""))
+
+
+def fetch(client: StatisClient, cfg: Config, start: int, end: int, *, debug: bool = False) -> FetchResult:
+    """抓取設定中所有 download_urls（各自替換 ym/ymt）並縱向合併；無清單時退回樣板。"""
+    urls = cfg.download_urls
+    if urls:
+        frames: list[pd.DataFrame] = []
+        for i, sample in enumerate(urls, 1):
+            url = build_url_from_sample(sample, start, end)
+            df = _fetch_one(client, url, start, end, tag=str(i), debug=debug)
+            frames.append(df)
+            log.info("第 %d/%d 條網址抓到 %d 列", i, len(urls), len(df))
+        combined = pd.concat(frames, ignore_index=True) if len(frames) > 1 else frames[0]
+        combined = combined.drop_duplicates().reset_index(drop=True)
+        return FetchResult(df=combined, start_period=start, end_period=end, source_url=" ; ".join(urls))
+
+    # 退回參數樣板（單一）
+    url = build_result_url(cfg, start, end)
+    df = _fetch_one(client, url, start, end, debug=debug)
     return FetchResult(df=df, start_period=start, end_period=end, source_url=url)
