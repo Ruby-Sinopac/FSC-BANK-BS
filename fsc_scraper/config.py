@@ -128,6 +128,11 @@ class Config:
         return bool(self.excel_target.get("backup", True))
 
     @property
+    def excel_target_backup_dir(self) -> str:
+        """備份存放資料夾；留空 = 執行程式的資料夾(目前工作目錄)。"""
+        return (self.excel_target.get("backup_dir") or "").strip()
+
+    @property
     def http(self) -> dict[str, Any]:
         return self.raw.get("http", {})
 

@@ -151,7 +151,8 @@ def cmd_update(cfg, args) -> int:
         mode = "[dry-run 預覽] " if args.dry_run else ""
         print(f"\n{mode}更新你的 Excel：{cfg.excel_target_file}")
         reports = append_to_workbook(
-            merged, cfg.excel_target_file, dry_run=args.dry_run, backup=cfg.excel_target_backup
+            merged, cfg.excel_target_file, dry_run=args.dry_run,
+            backup=cfg.excel_target_backup, backup_dir=cfg.excel_target_backup_dir,
         )
         _print_excel_reports(reports)
 

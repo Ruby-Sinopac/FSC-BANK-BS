@@ -171,8 +171,11 @@ def latest_period_in_workbook(path: str) -> int | None:
     return best
 
 
-def append_to_workbook(long_df, path: str, *, dry_run: bool = False, backup: bool = True) -> list[SheetReport]:
-    """把長格式資料中「各分頁尚缺的月份」append 到既有 Excel。"""
+def append_to_workbook(long_df, path: str, *, dry_run: bool = False, backup: bool = True, backup_dir: str = "") -> list[SheetReport]:
+    """把長格式資料中「各分頁尚缺的月份」append 到既有 Excel。
+
+    backup_dir 留空時，備份存到「目前工作目錄」(即執行程式/批次檔的資料夾)。
+    """
     wb = openpyxl.load_workbook(path)
     banks = list(dict.fromkeys(long_df["銀行"].tolist()))
     reports: list[SheetReport] = []
@@ -219,7 +222,10 @@ def append_to_workbook(long_df, path: str, *, dry_run: bool = False, backup: boo
     if not dry_run and any(r.new_periods and r.bank for r in reports):
         if backup:
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            bak = f"{os.path.splitext(path)[0]}.backup_{ts}.xlsx"
+            base = os.path.splitext(os.path.basename(path))[0]
+            folder = backup_dir or os.getcwd()  # 留空 = 執行程式的資料夾
+            os.makedirs(folder, exist_ok=True)
+            bak = os.path.join(folder, f"{base}.backup_{ts}.xlsx")
             shutil.copy2(path, bak)
             print(f"已備份原檔 -> {bak}")
         wb.save(path)

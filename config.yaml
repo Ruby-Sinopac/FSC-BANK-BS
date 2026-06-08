@@ -87,10 +87,13 @@ export:
 # ===== 直接更新進你原本的 Excel（保留格式/分頁/表頭）=====
 excel_target:
   enabled: true
-  # 你的歷史檔路徑（與本程式同資料夾時直接寫檔名即可）。
+  # 你的歷史檔路徑。含反斜線的 Windows 路徑請用「單引號」或改正斜線，
+  # 例：file: 'Y:\!圖表資料庫\檔名.xlsx'  或  file: "Y:/!圖表資料庫/檔名.xlsx"
   file: "同業近況報告：各銀行資產負債簡表分析.xlsx"
   # 寫入前是否自動備份一份（加時間戳）。強烈建議保持 true。
   backup: true
+  # 備份存放資料夾；留空 = 執行程式(批次檔)的資料夾。
+  backup_dir: ""
 
 http:
   timeout: 60
