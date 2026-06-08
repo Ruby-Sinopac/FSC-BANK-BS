@@ -13,10 +13,13 @@
 
 ## 這個系統怎麼運作（給維護者看）
 
-該站是 ASP.NET 的 `statis` 系統，實際資料由 `stmain.jsp` 以**網址參數**產生，例如：
+該站是 ASP.NET 的 `statis` 系統，頁面是 **iframe 架構**：左側樹狀選單在 frame `qry11`、
+查詢表單在 `qry12`，而且樹是 **JavaScript 動態展開**的，所以用 requests 直接抓選單會抓到 0 個節點。
+
+但**實際下載是一條純網址**，例如：
 
 ```
-https://survey.banking.gov.tw/statis/stmain.jsp?sys=220&ym=10201&ymt=11412&kind=21&type=1&funid=iXXXXX&cycle=41&outmode=0&compmode=00&outkind=1&rdm=亂數
+https://survey.banking.gov.tw/statis/webMain.aspx?sys=220&kind=21&type=1&funid=iXXXXX&cycle=41&ym=11403&ymt=11503&outmode=8&compmode=00&outkind=1&...
 ```
 
 關鍵參數：
@@ -24,11 +27,13 @@ https://survey.banking.gov.tw/statis/stmain.jsp?sys=220&ym=10201&ymt=11412&kind=
 | 參數 | 意義 |
 |------|------|
 | `funid` | 哪一張表（資產負債簡表102年以後有自己的 funid） |
-| `ym` / `ymt` | 起 / 迄民國年月，格式 `民國年(3碼)+月(2碼)`，如 `10201` = 民國102年1月 |
-| `outmode` | 輸出格式：`0` = HTML 網頁（最穩定，程式自動解析表格） |
+| `ym` / `ymt` | 起 / 迄民國年月，格式 `民國年(3碼)+月(2碼)`，如 `11403` = 民國114年3月 |
+| `outmode` | 輸出格式 |
 | `rdm` | 防快取亂數（程式自動產生） |
 
-「最新一期」是從**查詢條件設定頁的期間下拉選單**自動讀出來的——選單裡最大的那個年月就是最新期，所以能自動跟到最近期。
+**因此最穩的做法**：在瀏覽器把樹點到目標表、成功查詢一次，複製那條結果/下載網址，
+貼到 `config.yaml` 的 `query.download_url`。之後增量更新時，程式只會把網址裡的
+`ym`/`ymt` 換成「你資料的下一期 ～ 最新」，其餘參數原封不動，不需要再點樹。
 
 ---
 
@@ -42,37 +47,16 @@ pip install -r requirements.txt
 
 ---
 
-## 使用三步驟
+## 使用方式（推薦：貼下載網址）
 
-### 步驟 1：找出「資產負債簡表(102年以後)」的 funid
+### 步驟 1：在瀏覽器取得下載網址（只要做一次）
 
-```bash
-python -m fsc_scraper discover-menu
-```
+1. 開 https://survey.banking.gov.tw/statis/webMain.aspx?sys=100&funid=defqry
+2. 左側樹點開，找到 **「資產負債簡表(102年以後)」** 點下去（注意分辨本國銀行/外國銀行在臺分行、102年以前/以後）
+3. 設好期間，按查詢，讓數字表格跑出來
+4. 複製結果/下載頁的**完整網址**，整條貼到 `config.yaml` 的 `query.download_url`
 
-會抓網站導覽並列出所有節點，把含「資產負債簡表」的節點特別標出來，例如：
-
-```
-funid=i10010     金融機構資產負債簡表－本國銀行(全行)
-    https://survey.banking.gov.tw/statis/webMain.aspx?...funid=i10010
-```
-
-從清單中挑出**「(102年以後)」**那一張（注意區分本國銀行/外國銀行在臺分行等不同對象，
-以及「102年以前 / 以後」兩個版本），把它的 `funid` 填到 `config.yaml` 的 `query.funid`。
-
-> 若清單中找不到（選單可能用 JavaScript 動態載入），請把指令輸出整段貼給我，我幫你定位。
-
-### 步驟 2：確認欄位與期間
-
-```bash
-python -m fsc_scraper inspect --funid i10010 --debug
-```
-
-會 dump 該表查詢條件頁的所有表單欄位、可選的期間（民國年月），並印出期間範圍與一條
-**最新一期的範例網址**。請把那條網址貼到瀏覽器，確認開出來真的是你要的那張表。
-若參數對不上，依實際查詢後的網址調整 `config.yaml` 的 `result_url_template`。
-
-### 步驟 3：執行更新
+### 步驟 2：執行更新
 
 先用 `--dry-run` 看抓回來的表長什麼樣（不寫檔）：
 

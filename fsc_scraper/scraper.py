@@ -7,6 +7,7 @@ import logging
 import random
 import string
 from dataclasses import dataclass
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import pandas as pd
 from bs4 import BeautifulSoup
@@ -51,7 +52,27 @@ def detect_latest_period(client: StatisClient, cfg: Config) -> int:
     return latest
 
 
+def build_url_from_sample(sample_url: str, start: int, end: int) -> str:
+    """以一條「真實擷取到的下載網址」為樣板，只換掉 ym / ymt（與 rdm 防快取）。
+
+    這是最穩的做法：所有 funid / kind / type / cycle 等參數都沿用你實際查到的網址，
+    程式不再自行猜測。樹狀點擊只要在瀏覽器成功一次、把網址貼進設定即可。
+    """
+    parts = urlparse(sample_url)
+    params = dict(parse_qsl(parts.query, keep_blank_values=True))
+    params["ym"] = str(start)
+    params["ymt"] = str(end)
+    if "rdm" in params:
+        params["rdm"] = _rdm()
+    new_query = urlencode(params)
+    return urlunparse(parts._replace(query=new_query))
+
+
 def build_result_url(cfg: Config, start: int, end: int) -> str:
+    """優先使用設定中貼入的真實下載網址；否則退回參數樣板。"""
+    sample = cfg.download_url
+    if sample:
+        return build_url_from_sample(sample, start, end)
     return cfg.result_url_template.format(
         base_url=cfg.base_url,
         ym=start,

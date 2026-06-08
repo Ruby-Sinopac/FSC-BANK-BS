@@ -22,7 +22,7 @@ from .discover import (
     print_menu,
     save_debug_html,
 )
-from .periods import format_roc, next_month, parse_period
+from .periods import current_roc_period, format_roc, next_month, parse_period
 from .scraper import build_result_url, detect_latest_period, fetch
 
 
@@ -71,14 +71,23 @@ def cmd_inspect(cfg, args) -> int:
 
 
 def cmd_update(cfg, args) -> int:
-    if not cfg.funid:
-        print("config.yaml 尚未設定 query.funid，請先執行 discover-menu 找出後填入。", file=sys.stderr)
+    if not cfg.download_url and not cfg.funid:
+        print(
+            "config.yaml 尚未設定 query.download_url（建議）或 query.funid。\n"
+            "請在瀏覽器查到該表後，把結果頁網址貼到 download_url。",
+            file=sys.stderr,
+        )
         return 2
     client = _make_client(cfg)
 
-    # 1) 結束期
+    # 1) 結束期（上界）
     if cfg.end_period == "latest":
-        end = detect_latest_period(client, cfg)
+        if cfg.download_url:
+            # 用真實下載網址時，以系統當月為上界，實際最新期由回傳資料決定。
+            end = current_roc_period()
+            print(f"以當月 {format_roc(end)} 為查詢上界（實際最新期以網站回傳為準）。")
+        else:
+            end = detect_latest_period(client, cfg)
     else:
         end = parse_period(cfg.end_period)
 

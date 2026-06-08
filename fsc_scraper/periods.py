@@ -51,3 +51,15 @@ def iter_months(start: int, end: int):
     while cur <= end:
         yield cur
         cur = next_month(cur)
+
+
+def current_roc_period() -> int:
+    """以系統當下日期回傳當月的民國年月碼，作為「最新期」的上界。
+
+    例如西元 2026-06 -> 民國115年6月 -> 11506。
+    （資料通常有發布時差，抓到當月只是上界，系統會回傳實際已公布的最新期。）
+    """
+    import datetime as _dt
+
+    today = _dt.date.today()
+    return (today.year - 1911) * 100 + today.month

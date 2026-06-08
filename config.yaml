@@ -1,17 +1,18 @@
 # =============================================================================
 # 金管會銀行局「資產負債簡表(102年以後)」自動抓取設定檔
 # =============================================================================
-# 第一次使用流程：
-#   1. 先跑探查工具找出 funid：
-#        python -m fsc_scraper discover-menu
-#      它會列出網站導覽中所有「資產負債簡表」相關節點與其 funid，
-#      把屬於「(102年以後)」那一張表的 funid 填到下面 query.funid。
-#   2. 用該 funid dump 查詢條件頁，確認欄位與可選期間：
-#        python -m fsc_scraper inspect --funid iXXXXX
-#      它會印出表單欄位、可選的統計期(民國年月)，以及一條可直接用的
-#      stmain.jsp 範例網址。把網址對照後，視需要調整下面 query.result_url_template。
-#   3. 執行更新：
-#        python -m fsc_scraper update
+# 這個系統的下載其實是一條純網址：
+#   webMain.aspx?sys=220&kind=21&...&ym=11403&ymt=11503&...&outkind=1
+# 其中 ym / ymt 是起訖民國年月(RRRMM)。樹狀選單是 iframe + JavaScript 動態載入
+# (左側樹在 frame qry11、查詢表單在 qry12)，自動點擊較脆弱，但只要在瀏覽器
+# 「成功查到一次」拿到那條下載網址，之後增量更新只需換掉 ym/ymt 直接下載即可。
+#
+# 【推薦流程】
+#   1. 瀏覽器開 webMain.aspx?sys=100&funid=defqry，左側樹點到
+#      「資產負債簡表(102年以後)」，設好期間查詢，讓數字表格跑出來。
+#   2. 把「結果/下載」的完整網址複製，整條貼到下面 query.download_url。
+#   3. 執行更新： python -m fsc_scraper update
+#      （程式會沿用你網址裡的所有參數，只把 ym/ymt 換成「你資料的下一期 ~ 最新」。）
 # =============================================================================
 
 site:
@@ -22,11 +23,18 @@ site:
   encoding: "auto"
 
 query:
-  # ---- 必填：要抓的那張表 ----
-  # 「資產負債簡表(102年以後)」的 funid，請用 discover-menu 找出後填入。
+  # ===== 推薦：直接貼入完整下載網址 =====
+  # 在瀏覽器查到「資產負債簡表(102年以後)」結果後，把整條網址貼到這裡（含 ym=、ymt=）。
+  # 設了這個，程式會沿用網址內所有參數，只自動替換 ym/ymt（與防快取 rdm）。
+  # 例：
+  # download_url: "https://survey.banking.gov.tw/statis/webMain.aspx?sys=220&kind=21&type=1&funid=iXXXXX&cycle=41&ym=11403&ymt=11503&outmode=8&compmode=00&outkind=1&fldspc=..."
+  download_url: ""
+
+  # ===== 備援：若不貼完整網址，才會用下面的 funid + 參數樣板（較易猜錯）=====
+  # 「資產負債簡表(102年以後)」的 funid，可用 discover-menu 嘗試找出。
   funid: ""            # 例如 "i10010"
 
-  # ---- 取得資料的網址樣板 ----
+  # ---- 取得資料的網址樣板（僅在 download_url 留空時使用）----
   # 這個 statis 系統的資料是由 stmain.jsp 用網址參數產生的。
   # 以下為已知的參數結構，{ } 內為程式會自動代入的值：
   #   {ym}     起始民國年月（含），如 10201 表示民國102年1月

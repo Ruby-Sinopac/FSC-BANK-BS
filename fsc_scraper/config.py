@@ -31,8 +31,13 @@ class Config:
         return (self.raw["query"].get("funid") or "").strip()
 
     @property
+    def download_url(self) -> str:
+        """從瀏覽器/錄製擷取到的完整下載網址（含 ym/ymt）。設了就優先用它。"""
+        return (self.raw["query"].get("download_url") or "").strip()
+
+    @property
     def result_url_template(self) -> str:
-        return self.raw["query"]["result_url_template"]
+        return self.raw["query"].get("result_url_template", "")
 
     @property
     def outmode(self) -> int:
