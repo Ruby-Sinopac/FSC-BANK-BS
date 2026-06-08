@@ -290,7 +290,11 @@ def main(argv: list[str] | None = None) -> int:
         level=logging.INFO if args.verbose else logging.WARNING,
         format="%(asctime)s %(levelname)s %(message)s",
     )
-    cfg = load_config(args.config)
+    try:
+        cfg = load_config(args.config)
+    except (ValueError, FileNotFoundError) as exc:
+        print(f"\n[設定檔錯誤] {exc}", file=sys.stderr)
+        return 2
 
     handlers = {
         "discover-menu": cmd_discover_menu,

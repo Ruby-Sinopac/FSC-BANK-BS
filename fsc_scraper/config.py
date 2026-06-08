@@ -141,7 +141,20 @@ def load_config(path: str | None = None) -> Config:
     if not os.path.exists(path):
         raise FileNotFoundError(f"找不到設定檔：{path}")
     with open(path, "r", encoding="utf-8") as f:
-        raw = yaml.safe_load(f) or {}
+        text = f.read()
+    try:
+        raw = yaml.safe_load(text) or {}
+    except yaml.YAMLError as exc:
+        hint = ""
+        if "double-quoted" in str(exc) or "\\" in text:
+            hint = (
+                "\n\n常見原因：把含反斜線 \\ 的 Windows 路徑放進「雙引號」了。\n"
+                "請改成下列任一種：\n"
+                "  1) 只寫檔名（Excel 放在同資料夾）：  file: \"檔名.xlsx\"\n"
+                "  2) 用單引號包路徑：                  file: 'Z:\\資料夾\\檔名.xlsx'\n"
+                "  3) 路徑改用正斜線：                  file: \"Z:/資料夾/檔名.xlsx\""
+            )
+        raise ValueError(f"config.yaml 格式有誤（YAML 解析失敗）：{exc}{hint}") from None
     # 基本驗證
     for section in ("site", "query", "storage"):
         if section not in raw:
