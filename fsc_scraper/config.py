@@ -93,6 +93,10 @@ class Config:
     def http(self) -> dict[str, Any]:
         return self.raw.get("http", {})
 
+    @property
+    def verify_ssl(self) -> bool:
+        return bool(self.raw.get("http", {}).get("verify_ssl", True))
+
 
 def load_config(path: str | None = None) -> Config:
     path = path or DEFAULT_CONFIG_PATH

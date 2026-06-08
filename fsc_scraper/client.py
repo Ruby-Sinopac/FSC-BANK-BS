@@ -22,12 +22,20 @@ class StatisClient:
         retries: int = 4,
         delay: float = 1.5,
         encoding: str = "auto",
+        verify_ssl: bool = True,
     ) -> None:
         self.timeout = timeout
         self.retries = retries
         self.delay = delay
         self.encoding = encoding
         self.session = requests.Session()
+        self.session.verify = verify_ssl
+        if not verify_ssl:
+            # 政府網站憑證鏈常缺 Subject Key Identifier，Python 嚴格驗證會擋。
+            # 這是唯讀的公開統計資料，關閉驗證可接受；同時關掉惱人的警告。
+            import urllib3
+
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         self.session.headers.update(
             {
                 "User-Agent": user_agent,

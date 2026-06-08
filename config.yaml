@@ -83,3 +83,6 @@ http:
   # 禮貌性間隔（秒），避免對政府網站發太快。
   delay_between_requests: 1.5
   user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+  # 該政府網站的 SSL 憑證鏈缺 Subject Key Identifier，Python 嚴格驗證會出現
+  # CERTIFICATE_VERIFY_FAILED。瀏覽器可正常開啟，這裡為唯讀公開資料，故關閉驗證。
+  verify_ssl: false

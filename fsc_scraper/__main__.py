@@ -34,6 +34,7 @@ def _make_client(cfg) -> StatisClient:
         retries=int(http.get("retries", 4)),
         delay=float(http.get("delay_between_requests", 1.5)),
         encoding=cfg.encoding,
+        verify_ssl=cfg.verify_ssl,
     )
 
 
@@ -83,8 +84,10 @@ def cmd_update(cfg, args) -> int:
         print(f"共 {len(urls)} 條下載網址。")
     client = _make_client(cfg)
 
-    # 1) 結束期（上界）
-    if cfg.end_period == "latest":
+    # 1) 結束期（上界）— CLI --end 優先
+    if args.end:
+        end = parse_period(args.end)
+    elif cfg.end_period == "latest":
         if urls:
             # 用真實下載網址時，以系統當月為上界，實際最新期由回傳資料決定。
             end = current_roc_period()
@@ -94,9 +97,11 @@ def cmd_update(cfg, args) -> int:
     else:
         end = parse_period(cfg.end_period)
 
-    # 2) 起始期
+    # 2) 起始期 — CLI --start 優先
     existing = storage.load_existing(cfg.data_file, cfg.sheet_name)
-    if cfg.start_period == "auto":
+    if args.start:
+        start = parse_period(args.start)
+    elif cfg.start_period == "auto":
         last = storage.latest_period_in(existing, cfg.period_column)
         if last is None:
             # 沒有歷史資料 -> 預設從民國102年1月開始（102年以後表的起點）
@@ -156,6 +161,8 @@ def main(argv: list[str] | None = None) -> int:
     p_upd = sub.add_parser("update", help="抓最新資料並增量合併")
     p_upd.add_argument("--dry-run", action="store_true", help="只抓取與預覽，不寫檔")
     p_upd.add_argument("--debug", action="store_true", help="另存原始 HTML 到 debug/")
+    p_upd.add_argument("--start", default=None, help="覆寫起始民國年月（測試用，如 11502）")
+    p_upd.add_argument("--end", default=None, help="覆寫結束民國年月（測試用，如 11503）")
 
     args = parser.parse_args(argv)
     logging.basicConfig(
