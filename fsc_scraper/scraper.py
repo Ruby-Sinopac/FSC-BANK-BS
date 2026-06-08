@@ -156,6 +156,74 @@ def _clean_table(df: pd.DataFrame) -> pd.DataFrame:
     return df.reset_index(drop=True)
 
 
+# 欄名攤平後形如「<項目> <銀行>」，銀行為結尾的「NNN 某某銀行」或「本國銀行」。
+_BANK_TAIL = re.compile(r"\s*(\d{3}\s*\S+|本國銀行)$")
+# 純期別字串（如「115年 2月」）
+_PERIOD_ONLY = re.compile(r"^\D*\d{2,3}\s*年")
+
+
+def _split_item_bank(col: str) -> tuple[str, str] | None:
+    """把攤平欄名拆成 (項目, 銀行)。拆不出銀行則回 None（多半是期別欄）。"""
+    col = col.strip()
+    m = _BANK_TAIL.search(col)
+    if not m:
+        return None
+    bank = m.group(1).strip()
+    item = col[: m.start()].strip()
+    if not item:
+        return None
+    return item, bank
+
+
+# 各項目表的第一欄欄名常是「本國銀行－資產負債簡表 &nbsp;&nbsp;」之類，視為期別欄。
+LONG_COLUMNS = ["統計期", "期碼", "銀行", "項目", "數值"]
+
+
+def parse_balance_sheet(text: str) -> pd.DataFrame:
+    """把一頁結果（內含每個項目一張小表）攤平成長格式 DataFrame。
+
+    回傳欄位：統計期(顯示字串)、期碼(int, 民國yyymm)、銀行、項目、數值。
+    """
+    records: list[tuple] = []
+    for html in _leaf_tables_html(text):
+        try:
+            dfs = pd.read_html(io.StringIO(html))
+        except ValueError:
+            continue
+        for raw in dfs:
+            df = _clean_table(raw)
+            if df.shape[1] < 2 or df.empty:
+                continue
+            period_col = df.columns[0]
+            # 確認第一欄真的是期別
+            if not df[period_col].astype(str).str.contains(r"\d{2,3}\s*年").any():
+                continue
+            # 找出各資料欄的 (項目, 銀行)
+            data_cols = {c: _split_item_bank(c) for c in df.columns[1:]}
+            data_cols = {c: ib for c, ib in data_cols.items() if ib}
+            if not data_cols:
+                continue
+            for _, row in df.iterrows():
+                raw_period = str(row[period_col]).strip()
+                if not _PERIOD_ONLY.search(raw_period):
+                    continue
+                try:
+                    code = parse_period(raw_period)
+                except ValueError:
+                    continue
+                period_disp = format_roc(code)  # 統一成「115年02月」
+                for col, (item, bank) in data_cols.items():
+                    val = row[col]
+                    if pd.isna(val):
+                        continue
+                    records.append((period_disp, code, bank, item, val))
+
+    long = pd.DataFrame.from_records(records, columns=LONG_COLUMNS)
+    if not long.empty:
+        long = long.drop_duplicates(subset=["期碼", "銀行", "項目"], keep="last").reset_index(drop=True)
+    return long
+
+
 def _fetch_one(client: StatisClient, url: str, start: int, end: int, *, tag: str = "", debug: bool = False) -> pd.DataFrame:
     log.info("抓取 %s ~ %s：%s", format_roc(start), format_roc(end), url)
     resp = client.get(url)
@@ -166,24 +234,19 @@ def _fetch_one(client: StatisClient, url: str, start: int, end: int, *, tag: str
         fname = f"debug/result_{start}_{end}{('_' + tag) if tag else ''}.html"
         with open(fname, "w", encoding="utf-8") as f:
             f.write(text)
-    return parse_result(text, resp.headers.get("Content-Type", ""))
+    return parse_balance_sheet(text)
 
 
 def fetch(client: StatisClient, cfg: Config, start: int, end: int, *, debug: bool = False) -> FetchResult:
-    """抓取設定中所有 download_urls（各自替換 ym/ymt）並縱向合併；無清單時退回樣板。"""
-    urls = cfg.download_urls
-    if urls:
-        frames: list[pd.DataFrame] = []
-        for i, sample in enumerate(urls, 1):
-            url = build_url_from_sample(sample, start, end)
-            df = _fetch_one(client, url, start, end, tag=str(i), debug=debug)
-            frames.append(df)
-            log.info("第 %d/%d 條網址抓到 %d 列", i, len(urls), len(df))
-        combined = pd.concat(frames, ignore_index=True) if len(frames) > 1 else frames[0]
-        combined = combined.drop_duplicates().reset_index(drop=True)
-        return FetchResult(df=combined, start_period=start, end_period=end, source_url=" ; ".join(urls))
-
-    # 退回參數樣板（單一）
-    url = build_result_url(cfg, start, end)
-    df = _fetch_one(client, url, start, end, debug=debug)
-    return FetchResult(df=df, start_period=start, end_period=end, source_url=url)
+    """抓取所有 download_urls（各自替換 ym/ymt），解析成長格式後合併。"""
+    urls = cfg.download_urls or [build_result_url(cfg, start, end)]
+    frames: list[pd.DataFrame] = []
+    for i, sample in enumerate(urls, 1):
+        url = build_url_from_sample(sample, start, end) if cfg.download_urls else sample
+        df = _fetch_one(client, url, start, end, tag=str(i), debug=debug)
+        frames.append(df)
+        log.info("第 %d/%d 條網址：解析出 %d 筆", i, len(urls), len(df))
+    combined = pd.concat(frames, ignore_index=True) if len(frames) > 1 else frames[0]
+    if not combined.empty:
+        combined = combined.drop_duplicates(subset=["期碼", "銀行", "項目"], keep="last").reset_index(drop=True)
+    return FetchResult(df=combined, start_period=start, end_period=end, source_url=" ; ".join(urls))

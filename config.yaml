@@ -64,18 +64,26 @@ query:
   end_period: "latest"
 
 storage:
-  # 歷史/輸出資料檔。支援 .xlsx 與 .csv。
-  data_file: "data/asset_liability_summary.xlsx"
-  # Excel 工作表名稱（僅 .xlsx 時有效）
+  # 解析後資料以「長格式」保存為主檔（統計期 / 期碼 / 銀行 / 項目 / 數值）。
+  # 這是工具的資料來源(single source of truth)，建議用 CSV。
+  data_file: "data/master_long.csv"
   sheet_name: "資產負債簡表"
-  # 用來判斷「最後一期」的期別欄名（抓回來解析後的期間欄）。
-  # 第一次跑 `update --dry-run` 看實際欄名後再回來確認。
-  period_column: "期別"
-  # 合併去重的鍵欄位。因為有多家銀行，通常要「期別 + 銀行」兩欄一起當鍵，
-  # 否則同一期不同銀行會被誤刪。請依 dry-run 看到的實際欄名調整。
+  # 判斷「最後一期」用的欄名（長格式固定為 統計期）。
+  period_column: "統計期"
+  # 去重鍵：同一(期別,銀行,項目)只留一筆。
   key_columns:
-    - "期別"
+    - "統計期"
     - "銀行"
+    - "項目"
+
+export:
+  # 另外匯出成「每家銀行一個工作表、列=統計期、欄=各項目」的 Excel，貼近你的歷史檔格式。
+  enabled: true
+  file: "data/資產負債簡表_各銀行.xlsx"
+  # 工作表名稱是否去掉銀行代碼與「商業銀行」等字（如 808 玉山商業銀行 -> 玉山）。
+  short_sheet_names: true
+  # 是否包含「本國銀行」(全行合計) 這一欄/分頁。
+  include_total: false
 
 http:
   timeout: 60

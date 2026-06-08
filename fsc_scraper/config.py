@@ -89,6 +89,27 @@ class Config:
             return [str(k) for k in keys]
         return [self.period_column]
 
+    # --- 匯出（各銀行分頁 Excel）---
+    @property
+    def export(self) -> dict[str, Any]:
+        return self.raw.get("export", {})
+
+    @property
+    def export_enabled(self) -> bool:
+        return bool(self.export.get("enabled", False))
+
+    @property
+    def export_file(self) -> str:
+        return self.export.get("file", "data/per_bank.xlsx")
+
+    @property
+    def short_sheet_names(self) -> bool:
+        return bool(self.export.get("short_sheet_names", True))
+
+    @property
+    def include_total(self) -> bool:
+        return bool(self.export.get("include_total", False))
+
     @property
     def http(self) -> dict[str, Any]:
         return self.raw.get("http", {})

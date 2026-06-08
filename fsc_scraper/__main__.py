@@ -117,30 +117,35 @@ def cmd_update(cfg, args) -> int:
         print(f"已是最新（歷史最後一期之後沒有新資料）。最新期 = {format_roc(end)}，無需更新。")
         return 0
 
-    # 3) 抓取
+    # 3) 抓取（長格式：統計期 / 期碼 / 銀行 / 項目 / 數值）
     result = fetch(client, cfg, start, end, debug=args.debug)
-    print(f"\n抓回表格：{result.df.shape[0]} 列 x {result.df.shape[1]} 欄")
-    print("欄位：", list(result.df.columns))
+    df = result.df
+    print(f"\n解析出 {df.shape[0]} 筆長格式資料。")
+    if not df.empty:
+        print(f"  期別 ({df['統計期'].nunique()})：", sorted(df['統計期'].unique()))
+        print(f"  銀行 ({df['銀行'].nunique()})：", list(dict.fromkeys(df['銀行']))[:20])
+        print(f"  項目 ({df['項目'].nunique()})：", list(dict.fromkeys(df['項目']))[:30])
+    else:
+        print("⚠ 沒有解析到任何資料，請用 --debug 後以 analyze 檢視 HTML。")
 
     if args.dry_run:
-        print("\n[dry-run] 僅預覽，不寫入檔案。前 10 列：")
-        print(result.df.head(10).to_string())
-        print(
-            "\n請對照你的歷史資料，確認：(1)『期別』欄名 (2)『銀行』欄名，"
-            "並填到 config.yaml 的 storage.period_column 與 storage.key_columns。"
-        )
+        print("\n[dry-run] 僅預覽，不寫入檔案。前 15 筆：")
+        print(df.head(15).to_string())
         return 0
 
-    # 4) 合併寫回
-    merged = storage.merge(existing, result.df, cfg.period_column, cfg.key_columns)
+    # 4) 合併寫回長格式主檔
+    merged = storage.merge(existing, df, cfg.period_column, cfg.key_columns)
     storage.save(merged, cfg.data_file, cfg.sheet_name)
-    print(f"\n已更新並寫入 {cfg.data_file}（合併後共 {merged.shape[0]} 列）。")
-    missing = [k for k in cfg.key_columns if k not in result.df.columns]
-    if missing:
-        print(
-            f"⚠ 注意：抓回的表格沒有這些去重鍵欄位 {missing}，增量去重可能未生效。"
-            "請看上面實際欄位，調整 config.yaml 的 period_column / key_columns。"
+    print(f"\n已更新主檔 {cfg.data_file}（合併後共 {merged.shape[0]} 筆）。")
+
+    # 5) 匯出各銀行分頁 Excel
+    if cfg.export_enabled:
+        from . import export
+        n = export.export_per_bank(
+            merged, cfg.export_file,
+            short_names=cfg.short_sheet_names, include_total=cfg.include_total,
         )
+        print(f"已匯出各銀行分頁：{cfg.export_file}（{n} 個分頁）。")
     return 0
 
 
