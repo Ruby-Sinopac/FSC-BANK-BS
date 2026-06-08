@@ -10,8 +10,28 @@ import os
 import re
 
 import pandas as pd
+from openpyxl.utils import get_column_letter
 
 from .periods import parse_period
+
+# 視為「無數值」的符號（IFRS 刪除項目等），原樣保留以對齊歷史檔。
+_DASHES = {"-", "－", "—", "", "N/A", "nan", "None"}
+
+
+def to_number(v):
+    """把值轉成可計算的數字；逗號去掉，'-' 等保留原樣，空值回 None。"""
+    if v is None or (isinstance(v, float) and pd.isna(v)):
+        return None
+    if isinstance(v, (int, float)):
+        return v
+    s = str(v).strip().replace(",", "")
+    if s in _DASHES:
+        return str(v).strip() or None
+    try:
+        f = float(s)
+        return int(f) if f.is_integer() else f
+    except ValueError:
+        return str(v).strip()
 
 
 def short_bank_name(full: str) -> str:
@@ -41,6 +61,8 @@ def export_per_bank(long_df: pd.DataFrame, path: str, *, short_names: bool = Tru
     # 期碼用於列排序
     if "期碼" not in df.columns:
         df["期碼"] = df["統計期"].map(lambda v: _safe_parse(v))
+    # 數值轉成真正的數字（去逗號），保留 '-' 等符號
+    df["數值"] = df["數值"].map(to_number)
 
     item_order = _ordered_unique(df["項目"])
     banks = _ordered_unique(df["銀行"])
@@ -61,11 +83,23 @@ def export_per_bank(long_df: pd.DataFrame, path: str, *, short_names: bool = Tru
             cols = [c for c in item_order if c in wide.columns]
             wide = wide[cols]
             wide = wide.sort_index(level="期碼")
-            wide = wide.reset_index().drop(columns="期碼").rename(columns={"統計期": "統計期"})
+            wide = wide.reset_index().drop(columns="期碼")
             sheet = _safe_sheet_name(short_bank_name(bank) if short_names else bank)
             wide.to_excel(writer, sheet_name=sheet, index=False)
+            _apply_number_format(writer.sheets[sheet], n_rows=wide.shape[0], n_cols=wide.shape[1])
             written += 1
     return written
+
+
+def _apply_number_format(ws, n_rows: int, n_cols: int) -> None:
+    """對資料區（跳過表頭列與第一欄『統計期』）的數字儲存格套千分位格式 #,##0。"""
+    for col_idx in range(2, n_cols + 1):  # 第1欄是統計期，跳過
+        for row_idx in range(2, n_rows + 2):  # 第1列是表頭，跳過
+            cell = ws.cell(row=row_idx, column=col_idx)
+            if isinstance(cell.value, (int, float)):
+                cell.number_format = "#,##0"
+        # 順便把欄寬放寬一點，方便閱讀
+        ws.column_dimensions[get_column_letter(col_idx)].width = 16
 
 
 def _safe_parse(v) -> int:
